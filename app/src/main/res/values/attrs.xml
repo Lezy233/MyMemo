@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="StudyProgressRingView">
+        <attr name="ringWidth" format="dimension" />
+        <attr name="ringTrackColor" format="color" />
+        <attr name="ringProgressColor" format="color" />
+        <attr name="ringTextColor" format="color" />
+        <attr name="ringTextSize" format="dimension" />
+    </declare-styleable>
+</resources>

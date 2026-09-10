@@ -1,47 +1,43 @@
 package com.example.mymemo
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.mymemo.ui.theme.MyMemoTheme
+import android.widget.ImageView
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import com.example.mymemo.widget.ProgressRing
+import com.example.mymemo.widget.StudyProgressRingView
 
-class MainActivity : ComponentActivity() {
+/**
+ * 主界面:展示登录用户传入的用户名与头像,并嵌入背词进度环。
+ *
+ * 本变更中进度环使用占位数据(0 / 默认上限),真实数据将在 word-library 变更中接入。
+ */
+class MainActivity : AppCompatActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent {
-            MyMemoTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+        setContentView(R.layout.activity_main)
+
+        val username = intent.getStringExtra(EXTRA_USERNAME).orEmpty()
+        val avatar = intent.getStringExtra(EXTRA_AVATAR).orEmpty()
+
+        findViewById<TextView>(R.id.tvUsername).text =
+            getString(R.string.main_greeting_format, username)
+
+        if (avatar.isNotEmpty()) {
+            val avatarResId = resources.getIdentifier(avatar, "drawable", packageName)
+            if (avatarResId != 0) {
+                findViewById<ImageView>(R.id.ivAvatar).setImageResource(avatarResId)
             }
         }
+
+        // 占位数据:今日已背 0 / 默认上限
+        findViewById<StudyProgressRingView>(R.id.progressRing)
+            .setProgress(0, ProgressRing.DEFAULT_MAX)
     }
-}
 
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    MyMemoTheme {
-        Greeting("Android")
+    companion object {
+        const val EXTRA_USERNAME = "username"
+        const val EXTRA_AVATAR = "avatar"
     }
 }
