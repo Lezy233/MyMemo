@@ -1,6 +1,8 @@
 package com.example.mymemo
 
+import android.content.Intent
 import android.os.Bundle
+import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -34,6 +36,20 @@ class MainActivity : AppCompatActivity() {
         // 占位数据:今日已背 0 / 默认上限
         findViewById<StudyProgressRingView>(R.id.progressRing)
             .setProgress(0, ProgressRing.DEFAULT_MAX)
+
+        findViewById<Button>(R.id.btnLogout).setOnClickListener { logout() }
+    }
+
+    /**
+     * 退出登录:清空返回栈并回到登录界面,退出后按返回键无法回到主界面。
+     */
+    private fun logout() {
+        startActivity(
+            Intent(this, LoginActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+        )
+        finish()
     }
 
     companion object {

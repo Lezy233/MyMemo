@@ -72,6 +72,12 @@ class StudyProgressRingView @JvmOverloads constructor(
         invalidate()
     }
 
+    /** 当前已背数(供测试与调试读取)。 */
+    val currentValue: Int get() = currentProgress
+
+    /** 当日上限(供测试与调试读取)。 */
+    val maxValue: Int get() = maxProgress
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val desired = (DEFAULT_SIZE_DP + ringWidth).toInt()
         val width = resolveSize(desired, widthMeasureSpec)

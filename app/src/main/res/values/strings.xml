@@ -29,6 +29,7 @@
     <string name="main_greeting_format">你好，%1$s</string>
     <string name="main_progress_label">今日背词进度</string>
     <string name="main_progress_hint">背词功能将在后续版本中开放</string>
+    <string name="btn_logout">退出登录</string>
 
     <!-- 无障碍 -->
     <string name="cd_avatar_entry">选择头像入口</string>
