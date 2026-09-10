@@ -1,0 +1,33 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+context: |
+  Tech stack: Android (Java), Gradle Kotlin DSL, SQLite (本地单机,无联网/后端)
+  项目性质: 大学程序设计课程作业 —— 背单词 APP
+  业务领域: 账号系统(本地模拟)、单词库、每日背词上限、好友与聊天(本地模拟)、小游戏赢取背词额度、统计图表
+  约定: 所有用户数据与业务数据存 SQLite; 第一个活动为登录界面; 自定义控件「背词进度环」应用于所有活动; 好友列表使用 ListView
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
