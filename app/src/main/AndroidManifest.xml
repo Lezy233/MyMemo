@@ -39,6 +39,10 @@
         <activity
             android:name=".StudyActivity"
             android:exported="false" />
+
+        <activity
+            android:name=".WordQueueActivity"
+            android:exported="false" />
     </application>
 
 </manifest>

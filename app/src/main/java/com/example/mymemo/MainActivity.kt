@@ -61,6 +61,12 @@ class MainActivity : AppCompatActivity() {
                     .putExtra(EXTRA_USERNAME, username)
             )
         }
+        findViewById<Button>(R.id.btnTodayQueue).setOnClickListener {
+            startActivity(
+                Intent(this, WordQueueActivity::class.java)
+                    .putExtra(EXTRA_USERNAME, username)
+            )
+        }
         findViewById<Button>(R.id.btnDailyLimit).setOnClickListener { showDailyLimitDialog() }
         findViewById<Button>(R.id.btnLogout).setOnClickListener { logout() }
 

@@ -7,12 +7,14 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.matcher.ViewMatchers.hasChildCount
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.mymemo.db.AppDatabaseHelper
+import com.example.mymemo.study.StudySession
 import org.hamcrest.Matchers.not
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -22,8 +24,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * 背词学习界面端到端测试(任务 3.1 / 3.3 / 5.1):
- * 卡片翻转交互、队列学完自动结束、达到每日上限立即终止。
+ * 背词学习界面端到端测试(任务 3.1 / 3.2 / 3.3 / 3.5 / 5.1):
+ * 卡片翻转交互、初见认识即学会、不认识插回后连续两次认识、点击色块、会话终止。
  */
 @RunWith(AndroidJUnit4::class)
 class StudyFlowTest {
@@ -36,11 +38,13 @@ class StudyFlowTest {
     fun setUp() {
         db = AppDatabaseHelper.getInstance(ApplicationProvider.getApplicationContext())
         clearStudyData()
+        StudySession.clear()
     }
 
     @After
     fun tearDown() {
         clearStudyData()
+        StudySession.clear()
     }
 
     private fun clearStudyData() {
@@ -85,16 +89,33 @@ class StudyFlowTest {
     }
 
     @Test
-    fun twoConsecutiveKnownFinishSingleWordSession() {
+    fun firstSightKnownLearnsImmediately() {
         val userId = createUser(dailyLimit = 30)
-        val words = db.getAllWords()
-        val remaining = words.last()
-        // 除最后一个单词外,其余均标记为"昨天已学会",从而队列只剩一张卡
-        val yesterday = db.startOfTodayMillis() - 1000L
-        words.dropLast(1).forEach { db.insertStudyRecord(userId, it.id, yesterday) }
-        assertEquals(0, db.getTodayLearnedCount(userId))
+        val remaining = singleWordQueue(userId)
 
         val scenario = launchStudy()
+        onView(withId(R.id.tvCardWord)).check(matches(withText(remaining.word)))
+
+        // 初见点「认识」:直接写入学习记录并结束会话
+        onView(withId(R.id.cardWord)).perform(click())
+        onView(withId(R.id.btnKnown)).perform(click())
+
+        assertEquals(1, db.getTodayLearnedCount(userId))
+        awaitDestroyed(scenario)
+    }
+
+    @Test
+    fun unknownThenTwoKnownsFinishSingleWordSession() {
+        val userId = createUser(dailyLimit = 30)
+        val remaining = singleWordQueue(userId)
+
+        val scenario = launchStudy()
+        onView(withId(R.id.tvCardWord)).check(matches(withText(remaining.word)))
+
+        // 不认识:留在队列中
+        onView(withId(R.id.cardWord)).perform(click())
+        onView(withId(R.id.btnUnknown)).perform(click())
+        assertEquals(0, db.getTodayLearnedCount(userId))
         onView(withId(R.id.tvCardWord)).check(matches(withText(remaining.word)))
 
         // 第一次认识:留在队列中等待再次出现
@@ -112,6 +133,44 @@ class StudyFlowTest {
     }
 
     @Test
+    fun unknownThenKnownAppendsColorSquares() {
+        val userId = createUser(dailyLimit = 30)
+        singleWordQueue(userId)
+
+        launchStudy().use {
+            // 第一次不认识:1 个红色方格
+            onView(withId(R.id.cardWord)).perform(click())
+            onView(withId(R.id.btnUnknown)).perform(click())
+            onView(withId(R.id.cardWord)).perform(click())
+            onView(withId(R.id.tapHistory)).check(matches(hasChildCount(1)))
+
+            // 再次认识:追加 1 个蓝色方格,累计 2 个
+            onView(withId(R.id.btnKnown)).perform(click())
+            onView(withId(R.id.cardWord)).perform(click())
+            onView(withId(R.id.tapHistory)).check(matches(hasChildCount(2)))
+        }
+    }
+
+    @Test
+    fun tapHistoryClearsWhenSessionRestarts() {
+        val userId = createUser(dailyLimit = 30)
+        singleWordQueue(userId)
+
+        launchStudy().use {
+            onView(withId(R.id.cardWord)).perform(click())
+            onView(withId(R.id.btnUnknown)).perform(click())
+            onView(withId(R.id.cardWord)).perform(click())
+            onView(withId(R.id.tapHistory)).check(matches(hasChildCount(1)))
+        }
+
+        // 退出背词界面后重进:会话重建,色块按会话清空
+        launchStudy().use {
+            onView(withId(R.id.cardWord)).perform(click())
+            onView(withId(R.id.tapHistory)).check(matches(hasChildCount(0)))
+        }
+    }
+
+    @Test
     fun reachingDailyLimitTerminatesSession() {
         val userId = createUser(dailyLimit = 1)
         // 今日已背 1 条,达到上限
@@ -120,6 +179,16 @@ class StudyFlowTest {
         val scenario = launchStudy()
         awaitDestroyed(scenario)
         assertTrue(db.getTodayLearnedCount(userId) >= db.getDailyLimit(userId))
+    }
+
+    /**
+     * 除最后一个单词外,其余均标记为「昨天已学会」,使队列只剩最后一张卡;
+     * 同时返回该卡单词,便于断言。
+     */
+    private fun singleWordQueue(userId: Long) = db.getAllWords().last().also { remaining ->
+        val yesterday = db.startOfTodayMillis() - 1000L
+        db.getAllWords().dropLast(1).forEach { db.insertStudyRecord(userId, it.id, yesterday) }
+        assertEquals(0, db.getTodayLearnedCount(userId))
     }
 
     /** 轮询等待 Activity 完全销毁(任务 3.3:会话终止)。 */

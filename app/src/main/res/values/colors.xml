@@ -17,6 +17,10 @@
     <color name="avatar_border_normal">#FFBDBDBD</color>
     <color name="avatar_border_selected">#FF6200EE</color>
 
+    <!-- 背词卡片点击记录色块 -->
+    <color name="tap_known">#FF2196F3</color>
+    <color name="tap_unknown">#FFF44336</color>
+
     <!-- 通用 -->
     <color name="text_primary">#FF212121</color>
     <color name="text_secondary">#FF757575</color>

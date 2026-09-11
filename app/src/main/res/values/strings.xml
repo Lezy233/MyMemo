@@ -31,6 +31,7 @@
     <string name="main_progress_hint">今日已背 / 当日上限</string>
     <string name="btn_logout">退出登录</string>
     <string name="btn_word_library">词库管理</string>
+    <string name="btn_today_queue">今日队列</string>
     <string name="btn_start_study">开始背词</string>
     <string name="btn_daily_limit">每日上限</string>
     <string name="dialog_daily_limit">设置每日背词上限</string>
@@ -65,6 +66,11 @@
     <string name="study_finished">本次学习完成</string>
     <string name="study_limit_reached">已达今日背词上限，明天再来吧</string>
     <string name="study_no_words">没有可学习的单词了</string>
+
+    <!-- 今日单词队列 -->
+    <string name="title_word_queue">今日单词队列</string>
+    <string name="section_learned_today">今日已学会</string>
+    <string name="section_pending">待背单词</string>
 
     <!-- 无障碍 -->
     <string name="cd_avatar_entry">选择头像入口</string>

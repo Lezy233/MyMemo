@@ -347,6 +347,28 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
         set(Calendar.MILLISECOND, 0)
     }.timeInMillis
 
+    /** 某用户今日已学会的单词列表(按学会时间倒序,去重)。 */
+    fun getTodayLearnedWords(userId: Long): List<Word> {
+        val startOfDay = startOfTodayMillis()
+        val endOfDay = startOfDay + MILLIS_PER_DAY
+        val words = mutableListOf<Word>()
+        readableDatabase.rawQuery(
+            """
+            SELECT DISTINCT w.$COLUMN_ID, w.$COLUMN_WORD, w.$COLUMN_MEANING, w.$COLUMN_IS_PRESET
+            FROM $TABLE_WORDS w
+            JOIN $TABLE_STUDY_RECORDS r ON w.$COLUMN_ID = r.$COLUMN_WORD_ID
+            WHERE r.$COLUMN_USER_ID = ? AND r.$COLUMN_LEARNED_AT >= ? AND r.$COLUMN_LEARNED_AT < ?
+            ORDER BY r.$COLUMN_LEARNED_AT DESC
+            """.trimIndent(),
+            arrayOf(userId.toString(), startOfDay.toString(), endOfDay.toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                words += readWord(cursor)
+            }
+        }
+        return words
+    }
+
     companion object {
         const val DATABASE_NAME = "mymemo.db"
         const val DATABASE_VERSION = 2

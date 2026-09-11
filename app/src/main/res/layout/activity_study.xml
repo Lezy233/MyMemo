@@ -57,6 +57,16 @@
                 tools:text="v. 放弃，抛弃"
                 tools:visibility="visible" />
 
+            <LinearLayout
+                android:id="@+id/tapHistory"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:visibility="gone"
+                tools:ignore="MissingConstraints" />
+
             <TextView
                 android:id="@+id/tvFlipHint"
                 android:layout_width="wrap_content"
