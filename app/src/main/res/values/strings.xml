@@ -75,4 +75,39 @@
     <!-- 无障碍 -->
     <string name="cd_avatar_entry">选择头像入口</string>
     <string name="cd_user_avatar">当前用户头像</string>
+
+    <!-- 好友系统 -->
+    <string name="btn_friends">好友</string>
+    <string name="title_friend_list">我的好友</string>
+    <string name="btn_add_friend">添加好友</string>
+    <string name="btn_friend_requests_format">好友申请 (%1$d)</string>
+    <string name="dialog_add_friend">添加好友</string>
+    <string name="hint_search_username">输入对方用户名</string>
+    <string name="error_empty_username_search">请输入用户名</string>
+    <string name="friend_request_sent">好友申请已发送</string>
+    <string name="error_friend_self">不能添加自己</string>
+    <string name="error_friend_not_found">该用户不存在</string>
+    <string name="error_friend_already">你们已经是好友了</string>
+    <string name="error_friend_pending">已存在待处理的申请</string>
+    <string name="empty_friend_list">还没有好友，点击上方按钮添加</string>
+    <string name="friend_today_learned_format">今日已背 %1$d 词</string>
+    <string name="friend_delete_confirm">确定删除该好友吗？聊天记录会保留。</string>
+    <string name="friend_delete_title">删除好友</string>
+    <string name="btn_confirm_delete_friend">确认删除</string>
+    <string name="friend_deleted">已删除好友</string>
+    <string name="cd_friend_avatar">好友头像</string>
+
+    <!-- 好友申请 -->
+    <string name="title_friend_request">好友申请</string>
+    <string name="btn_accept">同意</string>
+    <string name="btn_reject">拒绝</string>
+    <string name="empty_friend_requests">暂无新的好友申请</string>
+    <string name="friend_request_accepted">已同意好友申请</string>
+    <string name="friend_request_rejected">已拒绝好友申请</string>
+
+    <!-- 聊天 -->
+    <string name="title_chat_format">与 %1$s 的聊天</string>
+    <string name="hint_message">输入消息…</string>
+    <string name="btn_send">发送</string>
+    <string name="empty_chat">暂无聊天记录</string>
 </resources>

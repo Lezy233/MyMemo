@@ -43,6 +43,19 @@
         <activity
             android:name=".WordQueueActivity"
             android:exported="false" />
+
+        <activity
+            android:name=".FriendListActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".FriendRequestActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ChatActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 
 </manifest>

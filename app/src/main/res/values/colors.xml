@@ -24,4 +24,8 @@
     <!-- 通用 -->
     <color name="text_primary">#FF212121</color>
     <color name="text_secondary">#FF757575</color>
+
+    <!-- 聊天气泡 -->
+    <color name="bubble_mine">#FFD1C4E9</color>
+    <color name="bubble_other">#FFF5F5F5</color>
 </resources>

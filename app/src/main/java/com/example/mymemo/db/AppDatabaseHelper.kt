@@ -14,8 +14,9 @@ import java.util.Calendar
  * 版本历史:
  * - v1:users 表(account-login)
  * - v2:新增 words(词库)与 study_records(学习记录)两张表,users 增加 daily_limit 列
+ * - v3:新增 friendships(好友关系)与 messages(聊天消息)两张表
  *
- * 后续变更(friends-and-chat、stats-and-game)继续在 [onCreate] / [onUpgrade] 中扩展。
+ * 后续变更(stats-and-game)继续在 [onCreate] / [onUpgrade] 中扩展。
  */
 class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper(
     context.applicationContext,
@@ -38,6 +39,8 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
         )
         createWordsTable(db)
         createStudyRecordsTable(db)
+        createFriendshipsTable(db)
+        createMessagesTable(db)
         seedPresetWordsIfEmpty(db)
     }
 
@@ -51,6 +54,11 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
                     "INTEGER NOT NULL DEFAULT $DEFAULT_DAILY_LIMIT"
             )
             seedPresetWordsIfEmpty(db)
+        }
+        if (oldVersion < 3) {
+            // v3 只新增两张表,既有账号、词库与学习记录原样保留
+            createFriendshipsTable(db)
+            createMessagesTable(db)
         }
     }
 
@@ -75,6 +83,39 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
                 $COLUMN_USER_ID INTEGER NOT NULL,
                 $COLUMN_WORD_ID INTEGER NOT NULL,
                 $COLUMN_LEARNED_AT INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+    }
+
+    /**
+     * 好友关系表:申请存一条记录(user_id=发起人,friend_id=接收人,pending),
+     * 同意后 status 改为 accepted,查询好友时按双向匹配,不存镜像记录。
+     */
+    private fun createFriendshipsTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_FRIENDSHIPS (
+                $COLUMN_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                $COLUMN_USER_ID INTEGER NOT NULL,
+                $COLUMN_FRIEND_ID INTEGER NOT NULL,
+                $COLUMN_STATUS TEXT NOT NULL,
+                $COLUMN_CREATED_AT INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+    }
+
+    /** 聊天消息表:单聊文字消息,按 sent_at 排序展示。 */
+    private fun createMessagesTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_MESSAGES (
+                $COLUMN_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                $COLUMN_SENDER_ID INTEGER NOT NULL,
+                $COLUMN_RECEIVER_ID INTEGER NOT NULL,
+                $COLUMN_CONTENT TEXT NOT NULL,
+                $COLUMN_SENT_AT INTEGER NOT NULL
             )
             """.trimIndent()
         )
@@ -369,9 +410,223 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
         return words
     }
 
+    // ---------------------------------------------------------------------
+    // 好友关系(friendships)
+    // ---------------------------------------------------------------------
+
+    /**
+     * 发起好友申请:校验自己、用户不存在、已是好友、已有待处理申请四种失败情形。
+     *
+     * @return 见 [AddFriendResult];成功时写入一条 status=pending 的记录。
+     */
+    fun sendFriendRequest(fromUserId: Long, targetUsername: String): AddFriendResult {
+        val target = findUserByUsername(targetUsername) ?: return AddFriendResult.USER_NOT_FOUND
+        if (target.id == fromUserId) return AddFriendResult.SELF
+        if (areFriends(fromUserId, target.id)) return AddFriendResult.ALREADY_FRIEND
+        if (hasPendingRequest(fromUserId, target.id)) return AddFriendResult.REQUEST_PENDING
+
+        val values = ContentValues().apply {
+            put(COLUMN_USER_ID, fromUserId)
+            put(COLUMN_FRIEND_ID, target.id)
+            put(COLUMN_STATUS, STATUS_PENDING)
+            put(COLUMN_CREATED_AT, System.currentTimeMillis())
+        }
+        return if (writableDatabase.insert(TABLE_FRIENDSHIPS, null, values) != -1L) {
+            AddFriendResult.SUCCESS
+        } else {
+            AddFriendResult.REQUEST_PENDING
+        }
+    }
+
+    /** 双方是否已是好友(status=accepted,双向匹配)。 */
+    fun areFriends(userA: Long, userB: Long): Boolean =
+        friendshipsBetween(userA, userB, STATUS_ACCEPTED).isNotEmpty()
+
+    /** 双方之间（任一方向）是否已有待处理申请。 */
+    fun hasPendingRequest(userA: Long, userB: Long): Boolean =
+        friendshipsBetween(userA, userB, STATUS_PENDING).isNotEmpty()
+
+    /** 查询收到的待处理申请(申请人是 user_id,收件人是 userId)。 */
+    fun getPendingRequests(userId: Long): List<FriendRequest> {
+        val requests = mutableListOf<FriendRequest>()
+        readableDatabase.rawQuery(
+            """
+            SELECT f.$COLUMN_ID, u.$COLUMN_ID, u.$COLUMN_USERNAME, u.$COLUMN_AVATAR, f.$COLUMN_CREATED_AT
+            FROM $TABLE_FRIENDSHIPS f
+            JOIN $TABLE_USERS u ON u.$COLUMN_ID = f.$COLUMN_USER_ID
+            WHERE f.$COLUMN_FRIEND_ID = ? AND f.$COLUMN_STATUS = ?
+            ORDER BY f.$COLUMN_CREATED_AT ASC, f.$COLUMN_ID ASC
+            """.trimIndent(),
+            arrayOf(userId.toString(), STATUS_PENDING)
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                requests += FriendRequest(
+                    id = cursor.getLong(0),
+                    fromUserId = cursor.getLong(1),
+                    fromUsername = cursor.getString(2),
+                    fromAvatar = cursor.getString(3),
+                    createdAt = cursor.getLong(4)
+                )
+            }
+        }
+        return requests
+    }
+
+    /** 待处理申请数量(用于主界面/好友界面的申请入口角标)。 */
+    fun getPendingRequestCount(userId: Long): Int {
+        readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM $TABLE_FRIENDSHIPS " +
+                "WHERE $COLUMN_FRIEND_ID = ? AND $COLUMN_STATUS = ?",
+            arrayOf(userId.toString(), STATUS_PENDING)
+        ).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getInt(0) else 0
+        }
+    }
+
+    /** 同意好友申请:将 pending 记录改为 accepted。 */
+    fun acceptFriendRequest(requestId: Long): Boolean {
+        val values = ContentValues().apply { put(COLUMN_STATUS, STATUS_ACCEPTED) }
+        return writableDatabase.update(
+            TABLE_FRIENDSHIPS,
+            values,
+            "$COLUMN_ID = ? AND $COLUMN_STATUS = ?",
+            arrayOf(requestId.toString(), STATUS_PENDING)
+        ) > 0
+    }
+
+    /** 拒绝好友申请:删除 pending 记录,之后双方可再次申请。 */
+    fun rejectFriendRequest(requestId: Long): Boolean =
+        writableDatabase.delete(
+            TABLE_FRIENDSHIPS,
+            "$COLUMN_ID = ? AND $COLUMN_STATUS = ?",
+            arrayOf(requestId.toString(), STATUS_PENDING)
+        ) > 0
+
+    /**
+     * 当前用户的好友列表,含每位好友今日已背单词数(复用 [getTodayLearnedCount])。
+     * 按用户名升序展示。
+     */
+    fun getFriends(userId: Long): List<Friend> {
+        val friends = mutableListOf<Friend>()
+        readableDatabase.rawQuery(
+            """
+            SELECT u.$COLUMN_ID, u.$COLUMN_USERNAME, u.$COLUMN_AVATAR
+            FROM $TABLE_FRIENDSHIPS f
+            JOIN $TABLE_USERS u
+              ON u.$COLUMN_ID = CASE WHEN f.$COLUMN_USER_ID = ? THEN f.$COLUMN_FRIEND_ID ELSE f.$COLUMN_USER_ID END
+            WHERE (f.$COLUMN_USER_ID = ? OR f.$COLUMN_FRIEND_ID = ?) AND f.$COLUMN_STATUS = ?
+            ORDER BY u.$COLUMN_USERNAME ASC
+            """.trimIndent(),
+            arrayOf(userId.toString(), userId.toString(), userId.toString(), STATUS_ACCEPTED)
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val friendId = cursor.getLong(0)
+                friends += Friend(
+                    userId = friendId,
+                    username = cursor.getString(1),
+                    avatar = cursor.getString(2),
+                    todayLearnedCount = getTodayLearnedCount(friendId)
+                )
+            }
+        }
+        return friends
+    }
+
+    /**
+     * 删除好友:双向解除 accepted 关系;聊天记录不在本方法内处理,保持保留。
+     */
+    fun deleteFriend(userId: Long, friendId: Long): Boolean =
+        writableDatabase.delete(
+            TABLE_FRIENDSHIPS,
+            "$COLUMN_STATUS = ? AND (($COLUMN_USER_ID = ? AND $COLUMN_FRIEND_ID = ?) " +
+                "OR ($COLUMN_USER_ID = ? AND $COLUMN_FRIEND_ID = ?))",
+            arrayOf(
+                STATUS_ACCEPTED,
+                userId.toString(),
+                friendId.toString(),
+                friendId.toString(),
+                userId.toString()
+            )
+        ) > 0
+
+    /** 查询两用户之间指定状态的 friendships 记录。 */
+    private fun friendshipsBetween(userA: Long, userB: Long, status: String): List<Long> {
+        val ids = mutableListOf<Long>()
+        readableDatabase.rawQuery(
+            "SELECT $COLUMN_ID FROM $TABLE_FRIENDSHIPS " +
+                "WHERE $COLUMN_STATUS = ? " +
+                "AND (($COLUMN_USER_ID = ? AND $COLUMN_FRIEND_ID = ?) " +
+                "OR ($COLUMN_USER_ID = ? AND $COLUMN_FRIEND_ID = ?))",
+            arrayOf(
+                status,
+                userA.toString(),
+                userB.toString(),
+                userB.toString(),
+                userA.toString()
+            )
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                ids += cursor.getLong(0)
+            }
+        }
+        return ids
+    }
+
+    // ---------------------------------------------------------------------
+    // 聊天消息(messages)
+    // ---------------------------------------------------------------------
+
+    /**
+     * 发送一条文字消息;内容为空或仅含空白字符时拒绝。
+     *
+     * @return 已写入返回 true;内容为空返回 false。
+     */
+    fun sendMessage(senderId: Long, receiverId: Long, content: String): Boolean {
+        val text = content.trim()
+        if (text.isEmpty()) return false
+        val values = ContentValues().apply {
+            put(COLUMN_SENDER_ID, senderId)
+            put(COLUMN_RECEIVER_ID, receiverId)
+            put(COLUMN_CONTENT, text)
+            put(COLUMN_SENT_AT, System.currentTimeMillis())
+        }
+        return writableDatabase.insert(TABLE_MESSAGES, null, values) != -1L
+    }
+
+    /** 查询两用户之间的全部消息,按发送时间升序(同毫秒按主键升序)。 */
+    fun getMessages(userA: Long, userB: Long): List<Message> {
+        val messages = mutableListOf<Message>()
+        readableDatabase.query(
+            TABLE_MESSAGES,
+            MESSAGE_COLUMNS,
+            "(($COLUMN_SENDER_ID = ? AND $COLUMN_RECEIVER_ID = ?) " +
+                "OR ($COLUMN_SENDER_ID = ? AND $COLUMN_RECEIVER_ID = ?))",
+            arrayOf(
+                userA.toString(),
+                userB.toString(),
+                userB.toString(),
+                userA.toString()
+            ),
+            null,
+            null,
+            "$COLUMN_SENT_AT ASC, $COLUMN_ID ASC"
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                messages += Message(
+                    id = cursor.getLong(cursor.getColumnIndexOrThrow(COLUMN_ID)),
+                    senderId = cursor.getLong(cursor.getColumnIndexOrThrow(COLUMN_SENDER_ID)),
+                    receiverId = cursor.getLong(cursor.getColumnIndexOrThrow(COLUMN_RECEIVER_ID)),
+                    content = cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_CONTENT)),
+                    sentAt = cursor.getLong(cursor.getColumnIndexOrThrow(COLUMN_SENT_AT))
+                )
+            }
+        }
+        return messages
+    }
+
     companion object {
         const val DATABASE_NAME = "mymemo.db"
-        const val DATABASE_VERSION = 2
+        const val DATABASE_VERSION = 3
 
         const val DEFAULT_DAILY_LIMIT = 30
         private const val MILLIS_PER_DAY = 24L * 60 * 60 * 1000
@@ -393,11 +648,32 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
         const val COLUMN_WORD_ID = "word_id"
         const val COLUMN_LEARNED_AT = "learned_at"
 
+        const val TABLE_FRIENDSHIPS = "friendships"
+        const val COLUMN_FRIEND_ID = "friend_id"
+        const val COLUMN_STATUS = "status"
+        const val COLUMN_CREATED_AT = "created_at"
+        const val STATUS_PENDING = "pending"
+        const val STATUS_ACCEPTED = "accepted"
+
+        const val TABLE_MESSAGES = "messages"
+        const val COLUMN_SENDER_ID = "sender_id"
+        const val COLUMN_RECEIVER_ID = "receiver_id"
+        const val COLUMN_CONTENT = "content"
+        const val COLUMN_SENT_AT = "sent_at"
+
         private val WORD_COLUMNS = arrayOf(
             COLUMN_ID,
             COLUMN_WORD,
             COLUMN_MEANING,
             COLUMN_IS_PRESET
+        )
+
+        private val MESSAGE_COLUMNS = arrayOf(
+            COLUMN_ID,
+            COLUMN_SENDER_ID,
+            COLUMN_RECEIVER_ID,
+            COLUMN_CONTENT,
+            COLUMN_SENT_AT
         )
 
         @Volatile

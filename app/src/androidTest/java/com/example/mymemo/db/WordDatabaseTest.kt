@@ -103,6 +103,77 @@ class WordDatabaseTest {
     }
 
     @Test
+    fun upgradeFromV2KeepsOldDataAndAddsFriendTables() {
+        // 在临时数据库上重现 v2 结构并写入账号、单词与学习记录
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val tmp = File(context.cacheDir, "migration_v3_test.db")
+        tmp.delete()
+        val legacy = SQLiteDatabase.openOrCreateDatabase(tmp, null)
+        legacy.execSQL(
+            "CREATE TABLE ${AppDatabaseHelper.TABLE_USERS} (" +
+                "${AppDatabaseHelper.COLUMN_ID} INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                "${AppDatabaseHelper.COLUMN_USERNAME} TEXT UNIQUE NOT NULL, " +
+                "${AppDatabaseHelper.COLUMN_PASSWORD} TEXT NOT NULL, " +
+                "${AppDatabaseHelper.COLUMN_AVATAR} TEXT NOT NULL, " +
+                "${AppDatabaseHelper.COLUMN_DAILY_LIMIT} INTEGER NOT NULL DEFAULT 30)"
+        )
+        legacy.execSQL(
+            "CREATE TABLE ${AppDatabaseHelper.TABLE_WORDS} (" +
+                "${AppDatabaseHelper.COLUMN_ID} INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                "${AppDatabaseHelper.COLUMN_WORD} TEXT UNIQUE NOT NULL, " +
+                "${AppDatabaseHelper.COLUMN_MEANING} TEXT NOT NULL, " +
+                "${AppDatabaseHelper.COLUMN_IS_PRESET} INTEGER NOT NULL DEFAULT 0)"
+        )
+        legacy.execSQL(
+            "CREATE TABLE ${AppDatabaseHelper.TABLE_STUDY_RECORDS} (" +
+                "${AppDatabaseHelper.COLUMN_ID} INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                "${AppDatabaseHelper.COLUMN_USER_ID} INTEGER NOT NULL, " +
+                "${AppDatabaseHelper.COLUMN_WORD_ID} INTEGER NOT NULL, " +
+                "${AppDatabaseHelper.COLUMN_LEARNED_AT} INTEGER NOT NULL)"
+        )
+        legacy.execSQL(
+            "INSERT INTO ${AppDatabaseHelper.TABLE_USERS} " +
+                "(${AppDatabaseHelper.COLUMN_USERNAME}, ${AppDatabaseHelper.COLUMN_PASSWORD}, " +
+                "${AppDatabaseHelper.COLUMN_AVATAR}) VALUES ('v2user', 'pw', 'avatar_1')"
+        )
+        legacy.execSQL(
+            "INSERT INTO ${AppDatabaseHelper.TABLE_WORDS} " +
+                "(${AppDatabaseHelper.COLUMN_WORD}, ${AppDatabaseHelper.COLUMN_MEANING}) " +
+                "VALUES ('v2word', 'v2释义')"
+        )
+        legacy.execSQL(
+            "INSERT INTO ${AppDatabaseHelper.TABLE_STUDY_RECORDS} " +
+                "(${AppDatabaseHelper.COLUMN_USER_ID}, ${AppDatabaseHelper.COLUMN_WORD_ID}, " +
+                "${AppDatabaseHelper.COLUMN_LEARNED_AT}) VALUES (1, 1, 123456789)"
+        )
+
+        // 执行真实的 v2 → v3 迁移
+        helper.onUpgrade(legacy, 2, 3)
+
+        // 旧数据全部保留
+        legacy.rawQuery(
+            "SELECT COUNT(*) FROM ${AppDatabaseHelper.TABLE_USERS}", null
+        ).use { cursor -> assertTrue(cursor.moveToFirst()); assertEquals(1, cursor.getInt(0)) }
+        legacy.rawQuery(
+            "SELECT COUNT(*) FROM ${AppDatabaseHelper.TABLE_WORDS}", null
+        ).use { cursor -> assertTrue(cursor.moveToFirst()); assertEquals(1, cursor.getInt(0)) }
+        legacy.rawQuery(
+            "SELECT COUNT(*) FROM ${AppDatabaseHelper.TABLE_STUDY_RECORDS}", null
+        ).use { cursor -> assertTrue(cursor.moveToFirst()); assertEquals(1, cursor.getInt(0)) }
+
+        // 新表已建好且为空
+        legacy.rawQuery(
+            "SELECT COUNT(*) FROM ${AppDatabaseHelper.TABLE_FRIENDSHIPS}", null
+        ).use { cursor -> assertTrue(cursor.moveToFirst()); assertEquals(0, cursor.getInt(0)) }
+        legacy.rawQuery(
+            "SELECT COUNT(*) FROM ${AppDatabaseHelper.TABLE_MESSAGES}", null
+        ).use { cursor -> assertTrue(cursor.moveToFirst()); assertEquals(0, cursor.getInt(0)) }
+
+        legacy.close()
+        tmp.delete()
+    }
+
+    @Test
     fun presetWordsAreSeededWithinRange() {
         val count = presetCount()
         assertTrue("预制词表应包含 100~200 个单词,实际 $count", count in 100..200)
