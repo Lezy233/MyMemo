@@ -28,8 +28,43 @@
     <!-- 主界面 -->
     <string name="main_greeting_format">你好，%1$s</string>
     <string name="main_progress_label">今日背词进度</string>
-    <string name="main_progress_hint">背词功能将在后续版本中开放</string>
+    <string name="main_progress_hint">今日已背 / 当日上限</string>
     <string name="btn_logout">退出登录</string>
+    <string name="btn_word_library">词库管理</string>
+    <string name="btn_start_study">开始背词</string>
+    <string name="btn_daily_limit">每日上限</string>
+    <string name="dialog_daily_limit">设置每日背词上限</string>
+    <string name="hint_daily_limit">请输入正整数</string>
+    <string name="error_invalid_limit">请输入正整数</string>
+    <string name="daily_limit_saved">上限已更新</string>
+
+    <!-- 词库管理 -->
+    <string name="title_word_library">单词库</string>
+    <string name="btn_add_word">添加单词</string>
+    <string name="hint_word">英文单词</string>
+    <string name="hint_meaning">中文释义</string>
+    <string name="dialog_add_word">添加单词</string>
+    <string name="dialog_edit_word">编辑单词</string>
+    <string name="btn_save">保存</string>
+    <string name="btn_delete">删除</string>
+    <string name="btn_confirm_delete">确认删除</string>
+    <string name="btn_cancel">取消</string>
+    <string name="error_empty_word">请输入英文单词</string>
+    <string name="error_empty_meaning">请输入中文释义</string>
+    <string name="error_word_exists">该单词已存在</string>
+    <string name="word_delete_confirm">确定删除该单词吗？</string>
+    <string name="word_added">添加成功</string>
+    <string name="word_updated">释义已保存</string>
+    <string name="word_deleted">已删除</string>
+
+    <!-- 背词学习 -->
+    <string name="title_study">背单词</string>
+    <string name="study_tap_to_flip">点击卡片查看释义</string>
+    <string name="btn_known">认识</string>
+    <string name="btn_unknown">不认识</string>
+    <string name="study_finished">本次学习完成</string>
+    <string name="study_limit_reached">已达今日背词上限，明天再来吧</string>
+    <string name="study_no_words">没有可学习的单词了</string>
 
     <!-- 无障碍 -->
     <string name="cd_avatar_entry">选择头像入口</string>

@@ -31,6 +31,14 @@
         <activity
             android:name=".MainActivity"
             android:exported="false" />
+
+        <activity
+            android:name=".WordLibraryActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".StudyActivity"
+            android:exported="false" />
     </application>
 
 </manifest>

@@ -5,5 +5,6 @@ data class User(
     val id: Long,
     val username: String,
     val password: String,
-    val avatar: String
+    val avatar: String,
+    val dailyLimit: Int
 )
