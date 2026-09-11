@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  方向指示三角形:等腰直角三角形(顶角 90°,底边 = 2×高),默认指向上方。
+  四个方向按键复用本 drawable,通过 android:rotation 旋转 0°/90°/180°/270° 指向各自方向。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,7.5 L21,16.5 L3,16.5 Z" />
+</vector>

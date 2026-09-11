@@ -110,4 +110,41 @@
     <string name="hint_message">输入消息…</string>
     <string name="btn_send">发送</string>
     <string name="empty_chat">暂无聊天记录</string>
+
+    <!-- 今日背词统计(饼图) -->
+    <string name="btn_stats">学习统计</string>
+    <string name="title_stats">今日背词统计</string>
+    <string name="stats_hint">今日背词熟悉程度分布</string>
+    <string name="stats_legend_green">熟知</string>
+    <string name="stats_legend_yellow">模糊</string>
+    <string name="stats_legend_red">不认识</string>
+    <string name="stats_legend_gray">待背</string>
+    <string name="stats_total_format">今日共 %1$d 词</string>
+    <string name="stats_empty">今日暂无学习数据</string>
+
+    <!-- 额度钱包与兑换 -->
+    <string name="quota_balance_format">额度余额:%1$d</string>
+    <string name="btn_exchange_limit">兑换上限</string>
+    <string name="dialog_exchange_limit">兑换每日上限</string>
+    <string name="exchange_hint_format">当前余额 %1$d,1 额度 = 今日上限 +1 词</string>
+    <string name="hint_exchange_amount">请输入兑换数量</string>
+    <string name="error_invalid_exchange">请输入正整数</string>
+    <string name="error_quota_not_enough">余额不足</string>
+    <string name="exchange_success_format">兑换成功,今日上限 +%1$d</string>
+
+    <!-- 贪吃蛇 -->
+    <string name="btn_snake_game">贪吃蛇</string>
+    <string name="title_snake">贪吃蛇</string>
+    <string name="snake_score_format">得分:%1$d</string>
+    <string name="snake_reward_hint">每颗果子 +1 额度,胜利额外 +100</string>
+    <!-- 方向按键无文字标签,以下仅作无障碍描述 -->
+    <string name="snake_dir_up">向上</string>
+    <string name="snake_dir_down">向下</string>
+    <string name="snake_dir_left">向左</string>
+    <string name="snake_dir_right">向右</string>
+    <string name="snake_result_win">胜利!</string>
+    <string name="snake_result_lose">游戏结束</string>
+    <string name="snake_result_format">本局得分:%1$d\n本局获得额度:%2$d</string>
+    <string name="btn_restart">再来一局</string>
+    <string name="btn_exit_game">退出</string>
 </resources>

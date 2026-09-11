@@ -25,6 +25,22 @@
     <color name="text_primary">#FF212121</color>
     <color name="text_secondary">#FF757575</color>
 
+    <!-- 今日背词饼图 -->
+    <color name="stats_green">#FF4CAF50</color>
+    <color name="stats_yellow">#FFFFC107</color>
+    <color name="stats_red">#FFF44336</color>
+    <color name="stats_gray">#FF9E9E9E</color>
+
+    <!-- 贪吃蛇 -->
+    <color name="snake_board_bg">#FFF5F5F5</color>
+    <color name="snake_grid">#FFE0E0E0</color>
+    <color name="snake_body">#FF2196F3</color>
+    <color name="snake_head">#FF1565C0</color>
+    <color name="snake_fruit">#FFF44336</color>
+    <color name="snake_dir_button_bg">#FFEDE7F6</color>
+    <color name="snake_dir_button_border">#FF6200EE</color>
+    <color name="snake_dir_icon">#FF6200EE</color>
+
     <!-- 聊天气泡 -->
     <color name="bubble_mine">#FFD1C4E9</color>
     <color name="bubble_other">#FFF5F5F5</color>

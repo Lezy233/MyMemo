@@ -14,6 +14,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.mymemo.db.AppDatabaseHelper
+import com.example.mymemo.study.StudySession
 import com.example.mymemo.widget.ProgressRing
 import com.example.mymemo.widget.StudyProgressRingView
 
@@ -24,10 +25,12 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var db: AppDatabaseHelper
     private lateinit var progressRing: StudyProgressRingView
+    private lateinit var tvQuota: TextView
 
     private var username: String = ""
     private var userId: Long = -1L
     private var dailyLimit: Int = AppDatabaseHelper.DEFAULT_DAILY_LIMIT
+    private var quotaCredit: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,6 +38,7 @@ class MainActivity : AppCompatActivity() {
 
         db = AppDatabaseHelper.getInstance(this)
         progressRing = findViewById(R.id.progressRing)
+        tvQuota = findViewById(R.id.tvQuota)
 
         username = intent.getStringExtra(EXTRA_USERNAME).orEmpty()
         val avatar = intent.getStringExtra(EXTRA_AVATAR).orEmpty()
@@ -73,6 +77,19 @@ class MainActivity : AppCompatActivity() {
                     .putExtra(EXTRA_USERNAME, username)
             )
         }
+        findViewById<Button>(R.id.btnStats).setOnClickListener {
+            startActivity(
+                Intent(this, StatsActivity::class.java)
+                    .putExtra(EXTRA_USERNAME, username)
+            )
+        }
+        findViewById<Button>(R.id.btnSnakeGame).setOnClickListener {
+            startActivity(
+                Intent(this, SnakeGameActivity::class.java)
+                    .putExtra(EXTRA_USERNAME, username)
+            )
+        }
+        findViewById<Button>(R.id.btnExchangeLimit).setOnClickListener { showExchangeDialog() }
         findViewById<Button>(R.id.btnDailyLimit).setOnClickListener { showDailyLimitDialog() }
         findViewById<Button>(R.id.btnLogout).setOnClickListener { logout() }
 
@@ -95,7 +112,83 @@ class MainActivity : AppCompatActivity() {
         }
         userId = user.id
         dailyLimit = user.dailyLimit
+        quotaCredit = user.quotaCredit
         progressRing.setProgress(db.getTodayLearnedCount(userId), dailyLimit)
+        tvQuota.text = getString(R.string.quota_balance_format, quotaCredit)
+    }
+
+    /**
+     * 额度兑换弹窗:输入数量为正整数且不超过余额时,
+     * 1 额度 = 今日上限 +1,立即扣减余额并生效;若存在活跃会话则按新额度补充队列。
+     */
+    private fun showExchangeDialog() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            hint = getString(R.string.hint_exchange_amount)
+        }
+        val container = FrameLayout(this).apply {
+            setPadding(24.dp(), 8.dp(), 24.dp(), 0)
+            addView(
+                input,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.dialog_exchange_limit)
+            .setMessage(getString(R.string.exchange_hint_format, quotaCredit))
+            .setView(container)
+            .setPositiveButton(R.string.btn_save, null)
+            .setNegativeButton(R.string.btn_cancel, null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                val value = input.text.toString().trim().toIntOrNull()
+                when {
+                    value == null || value <= 0 -> Toast.makeText(
+                        this,
+                        getString(R.string.error_invalid_exchange),
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    value > quotaCredit -> Toast.makeText(
+                        this,
+                        getString(R.string.error_quota_not_enough),
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    userId > 0 && db.exchangeQuotaForLimit(userId, value) -> {
+                        val user = db.findUserByUsername(username)
+                        if (user != null) {
+                            dailyLimit = user.dailyLimit
+                            quotaCredit = user.quotaCredit
+                            // 立即生效:活跃会话按新的剩余额度补充单词
+                            val remaining = (dailyLimit - db.getTodayLearnedCount(userId))
+                                .coerceAtLeast(0)
+                            StudySession.supplement(db.getUnlearnedWords(userId), remaining)
+                        }
+                        refreshProgress()
+                        Toast.makeText(
+                            this,
+                            getString(R.string.exchange_success_format, value),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        dialog.dismiss()
+                    }
+
+                    else -> Toast.makeText(
+                        this,
+                        getString(R.string.error_quota_not_enough),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+        dialog.show()
     }
 
     /** 每日上限设置弹窗:仅接受正整数,保存后立即生效。 */

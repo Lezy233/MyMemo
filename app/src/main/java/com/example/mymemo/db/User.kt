@@ -6,5 +6,6 @@ data class User(
     val username: String,
     val password: String,
     val avatar: String,
-    val dailyLimit: Int
+    val dailyLimit: Int,
+    val quotaCredit: Int = 0
 )

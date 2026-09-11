@@ -6,7 +6,10 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteConstraintException
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 /**
  * 应用本地数据库(单机、无联网)。
@@ -15,8 +18,10 @@ import java.util.Calendar
  * - v1:users 表(account-login)
  * - v2:新增 words(词库)与 study_records(学习记录)两张表,users 增加 daily_limit 列
  * - v3:新增 friendships(好友关系)与 messages(聊天消息)两张表
+ * - v4:users 增加 quota_credit(额度钱包),study_records 增加 fail_count(学会时当日失败次数),
+ *      新增 word_daily_fails(单词每日失败次数)表(stats-and-game)
  *
- * 后续变更(stats-and-game)继续在 [onCreate] / [onUpgrade] 中扩展。
+ * 后续变更继续在 [onCreate] / [onUpgrade] 中扩展。
  */
 class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper(
     context.applicationContext,
@@ -33,7 +38,8 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
                 $COLUMN_USERNAME TEXT UNIQUE NOT NULL,
                 $COLUMN_PASSWORD TEXT NOT NULL,
                 $COLUMN_AVATAR TEXT NOT NULL,
-                $COLUMN_DAILY_LIMIT INTEGER NOT NULL DEFAULT $DEFAULT_DAILY_LIMIT
+                $COLUMN_DAILY_LIMIT INTEGER NOT NULL DEFAULT $DEFAULT_DAILY_LIMIT,
+                $COLUMN_QUOTA_CREDIT INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent()
         )
@@ -41,6 +47,7 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
         createStudyRecordsTable(db)
         createFriendshipsTable(db)
         createMessagesTable(db)
+        createWordDailyFailsTable(db)
         seedPresetWordsIfEmpty(db)
     }
 
@@ -60,7 +67,34 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
             createFriendshipsTable(db)
             createMessagesTable(db)
         }
+        if (oldVersion < 4) {
+            // v4:额度钱包 + 失败次数持久化,旧账号/词库/学习记录/聊天数据原样保留。
+            // v1→v4 链式升级时,study_records 可能已由新版建表语句带上 fail_count,故先判列存在。
+            if (!hasColumn(db, TABLE_USERS, COLUMN_QUOTA_CREDIT)) {
+                db.execSQL(
+                    "ALTER TABLE $TABLE_USERS ADD COLUMN $COLUMN_QUOTA_CREDIT " +
+                        "INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+            if (!hasColumn(db, TABLE_STUDY_RECORDS, COLUMN_FAIL_COUNT)) {
+                db.execSQL(
+                    "ALTER TABLE $TABLE_STUDY_RECORDS ADD COLUMN $COLUMN_FAIL_COUNT " +
+                        "INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+            createWordDailyFailsTable(db)
+        }
     }
+
+    /** 判断表中是否已存在某列(用于幂等迁移,避免重复 ALTER)。 */
+    private fun hasColumn(db: SQLiteDatabase, table: String, column: String): Boolean =
+        db.rawQuery("PRAGMA table_info($table)", null).use { cursor ->
+            val nameIndex = cursor.getColumnIndexOrThrow("name")
+            while (cursor.moveToNext()) {
+                if (cursor.getString(nameIndex) == column) return true
+            }
+            false
+        }
 
     private fun createWordsTable(db: SQLiteDatabase) {
         db.execSQL(
@@ -82,7 +116,27 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
                 $COLUMN_ID INTEGER PRIMARY KEY AUTOINCREMENT,
                 $COLUMN_USER_ID INTEGER NOT NULL,
                 $COLUMN_WORD_ID INTEGER NOT NULL,
-                $COLUMN_LEARNED_AT INTEGER NOT NULL
+                $COLUMN_LEARNED_AT INTEGER NOT NULL,
+                $COLUMN_FAIL_COUNT INTEGER NOT NULL DEFAULT 0
+            )
+            """.trimIndent()
+        )
+    }
+
+    /**
+     * 单词每日失败次数表:按 (user_id, word_id, fail_date) 逻辑唯一。
+     * fail_date 为 'yyyy-MM-dd' 本地日期字符串,跨天自然形成新记录,
+     * 无需重置逻辑即实现「跨天重新计数、旧记录保留」。
+     */
+    private fun createWordDailyFailsTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_WORD_DAILY_FAILS (
+                $COLUMN_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                $COLUMN_USER_ID INTEGER NOT NULL,
+                $COLUMN_WORD_ID INTEGER NOT NULL,
+                $COLUMN_FAIL_DATE TEXT NOT NULL,
+                $COLUMN_FAIL_COUNT INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent()
         )
@@ -186,7 +240,8 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
                 COLUMN_USERNAME,
                 COLUMN_PASSWORD,
                 COLUMN_AVATAR,
-                COLUMN_DAILY_LIMIT
+                COLUMN_DAILY_LIMIT,
+                COLUMN_QUOTA_CREDIT
             ),
             "$COLUMN_USERNAME = ?",
             arrayOf(username),
@@ -200,7 +255,8 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
                 username = cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_USERNAME)),
                 password = cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_PASSWORD)),
                 avatar = cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_AVATAR)),
-                dailyLimit = cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_DAILY_LIMIT))
+                dailyLimit = cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_DAILY_LIMIT)),
+                quotaCredit = cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_QUOTA_CREDIT))
             )
         }
     }
@@ -352,12 +408,22 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
     // 学习记录(study_records)
     // ---------------------------------------------------------------------
 
-    /** 记录某用户学会了某个单词(写入一条学习记录)。 */
-    fun insertStudyRecord(userId: Long, wordId: Long, learnedAt: Long = System.currentTimeMillis()): Boolean {
+    /**
+     * 记录某用户学会了某个单词(写入一条学习记录)。
+     *
+     * @param failCount 该词今日点击「不认识」的累计次数,随学习记录一并保存。
+     */
+    fun insertStudyRecord(
+        userId: Long,
+        wordId: Long,
+        learnedAt: Long = System.currentTimeMillis(),
+        failCount: Int = 0
+    ): Boolean {
         val values = ContentValues().apply {
             put(COLUMN_USER_ID, userId)
             put(COLUMN_WORD_ID, wordId)
             put(COLUMN_LEARNED_AT, learnedAt)
+            put(COLUMN_FAIL_COUNT, failCount)
         }
         return writableDatabase.insert(TABLE_STUDY_RECORDS, null, values) != -1L
     }
@@ -408,6 +474,186 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
             }
         }
         return words
+    }
+
+    // ---------------------------------------------------------------------
+    // 失败次数持久化(word_daily_fails)
+    // ---------------------------------------------------------------------
+
+    /**
+     * 记录一次「不认识」:对 (用户, 单词, 指定日期) 执行 upsert,fail_count 加一。
+     * 同一单词同日多次点击会累加;次日再次点击则从 1 重新计数(旧记录保留)。
+     *
+     * @return 该词当日累计失败次数。
+     */
+    fun incrementWordFailCount(
+        userId: Long,
+        wordId: Long,
+        failDate: String = todayDateString()
+    ): Int {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val current = getWordFailCount(userId, wordId, failDate)
+            val values = ContentValues().apply { put(COLUMN_FAIL_COUNT, current + 1) }
+            if (current == 0) {
+                values.put(COLUMN_USER_ID, userId)
+                values.put(COLUMN_WORD_ID, wordId)
+                values.put(COLUMN_FAIL_DATE, failDate)
+                db.insert(TABLE_WORD_DAILY_FAILS, null, values)
+            } else {
+                db.update(
+                    TABLE_WORD_DAILY_FAILS,
+                    values,
+                    "$COLUMN_USER_ID = ? AND $COLUMN_WORD_ID = ? AND $COLUMN_FAIL_DATE = ?",
+                    arrayOf(userId.toString(), wordId.toString(), failDate)
+                )
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return getWordFailCount(userId, wordId, failDate)
+    }
+
+    /** 某用户某单词指定日期的失败次数;无记录返回 0。 */
+    fun getWordFailCount(userId: Long, wordId: Long, failDate: String): Int =
+        readableDatabase.rawQuery(
+            "SELECT $COLUMN_FAIL_COUNT FROM $TABLE_WORD_DAILY_FAILS " +
+                "WHERE $COLUMN_USER_ID = ? AND $COLUMN_WORD_ID = ? AND $COLUMN_FAIL_DATE = ?",
+            arrayOf(userId.toString(), wordId.toString(), failDate)
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else 0 }
+
+    /** 指定用户尚未学会(无任何学习记录)的单词数量。 */
+    fun getUnlearnedWordCount(userId: Long): Int =
+        readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM $TABLE_WORDS WHERE $COLUMN_ID NOT IN " +
+                "(SELECT $COLUMN_WORD_ID FROM $TABLE_STUDY_RECORDS WHERE $COLUMN_USER_ID = ?)",
+            arrayOf(userId.toString())
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else 0 }
+
+    /**
+     * 今日背词熟悉程度分布(饼图数据),全部由数据库计算:
+     * - 绿(熟知)= 今日学会且 fail_count = 0 的条数;
+     * - 黄(模糊)= 今日学会且 fail_count = 1 的条数;
+     * - 红(不认识)= 今日失败次数 ≥ 2 的去重单词数(含最终学会的);
+     * - 灰(待背)= max(0, min(剩余额度, 未学会总数) − 红色中仍未学会的数量)。
+     */
+    fun getTodayStats(userId: Long): StudyStats {
+        val startOfDay = startOfTodayMillis()
+        val endOfDay = startOfDay + MILLIS_PER_DAY
+        val failDate = todayDateString()
+
+        val green = countTodayLearnedByFailCount(userId, startOfDay, endOfDay, 0)
+        val yellow = countTodayLearnedByFailCount(userId, startOfDay, endOfDay, 1)
+
+        val red = readableDatabase.rawQuery(
+            "SELECT COUNT(DISTINCT $COLUMN_WORD_ID) FROM $TABLE_WORD_DAILY_FAILS " +
+                "WHERE $COLUMN_USER_ID = ? AND $COLUMN_FAIL_DATE = ? AND $COLUMN_FAIL_COUNT >= 2",
+            arrayOf(userId.toString(), failDate)
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else 0 }
+
+        // 红色中仍未学会的数量:这些词虽属红色,但会被「未学会总数」重复计入灰色,需扣除
+        val redUnlearned = readableDatabase.rawQuery(
+            "SELECT COUNT(DISTINCT f.$COLUMN_WORD_ID) FROM $TABLE_WORD_DAILY_FAILS f " +
+                "WHERE f.$COLUMN_USER_ID = ? AND f.$COLUMN_FAIL_DATE = ? " +
+                "AND f.$COLUMN_FAIL_COUNT >= 2 AND f.$COLUMN_WORD_ID NOT IN " +
+                "(SELECT r.$COLUMN_WORD_ID FROM $TABLE_STUDY_RECORDS r WHERE r.$COLUMN_USER_ID = ?)",
+            arrayOf(userId.toString(), failDate, userId.toString())
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else 0 }
+
+        val remaining = (getDailyLimit(userId) - getTodayLearnedCount(userId)).coerceAtLeast(0)
+        val unlearned = getUnlearnedWordCount(userId)
+        val gray = (minOf(remaining, unlearned) - redUnlearned).coerceAtLeast(0)
+
+        return StudyStats(green = green, yellow = yellow, red = red, gray = gray)
+    }
+
+    private fun countTodayLearnedByFailCount(
+        userId: Long,
+        startOfDay: Long,
+        endOfDay: Long,
+        failCount: Int
+    ): Int =
+        readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM $TABLE_STUDY_RECORDS WHERE $COLUMN_USER_ID = ? " +
+                "AND $COLUMN_LEARNED_AT >= ? AND $COLUMN_LEARNED_AT < ? AND $COLUMN_FAIL_COUNT = ?",
+            arrayOf(
+                userId.toString(),
+                startOfDay.toString(),
+                endOfDay.toString(),
+                failCount.toString()
+            )
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else 0 }
+
+    // ---------------------------------------------------------------------
+    // 额度钱包(quota_credit)
+    // ---------------------------------------------------------------------
+
+    /** 当前用户的额度余额;用户不存在返回 0。 */
+    fun getQuotaCredit(userId: Long): Int =
+        readableDatabase.query(
+            TABLE_USERS,
+            arrayOf(COLUMN_QUOTA_CREDIT),
+            "$COLUMN_ID = ?",
+            arrayOf(userId.toString()),
+            null,
+            null,
+            null
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else 0 }
+
+    /** 增加额度(游戏结算);数量必须为正数。 */
+    fun addQuotaCredit(userId: Long, amount: Int): Boolean {
+        if (amount <= 0) return false
+        val values = ContentValues().apply { put(COLUMN_QUOTA_CREDIT, getQuotaCredit(userId) + amount) }
+        return writableDatabase.update(
+            TABLE_USERS,
+            values,
+            "$COLUMN_ID = ?",
+            arrayOf(userId.toString())
+        ) > 0
+    }
+
+    /** 扣减额度(兑换);数量必须为正且不超过当前余额。 */
+    fun deductQuotaCredit(userId: Long, amount: Int): Boolean {
+        if (amount <= 0) return false
+        val current = getQuotaCredit(userId)
+        if (current < amount) return false
+        val values = ContentValues().apply { put(COLUMN_QUOTA_CREDIT, current - amount) }
+        return writableDatabase.update(
+            TABLE_USERS,
+            values,
+            "$COLUMN_ID = ?",
+            arrayOf(userId.toString())
+        ) > 0
+    }
+
+    /**
+     * 额度兑换每日上限:1 额度 = 上限 +1。
+     * 数量必须为正整数且不超过余额;余额扣减与上限提升在同一事务内完成。
+     */
+    fun exchangeQuotaForLimit(userId: Long, amount: Int): Boolean {
+        if (amount <= 0) return false
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val credit = getQuotaCredit(userId)
+            if (credit < amount) return false
+            val values = ContentValues().apply {
+                put(COLUMN_QUOTA_CREDIT, credit - amount)
+                put(COLUMN_DAILY_LIMIT, getDailyLimit(userId) + amount)
+            }
+            val updated = db.update(
+                TABLE_USERS,
+                values,
+                "$COLUMN_ID = ?",
+                arrayOf(userId.toString())
+            ) > 0
+            db.setTransactionSuccessful()
+            return updated
+        } finally {
+            db.endTransaction()
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -626,7 +872,7 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
 
     companion object {
         const val DATABASE_NAME = "mymemo.db"
-        const val DATABASE_VERSION = 3
+        const val DATABASE_VERSION = 4
 
         const val DEFAULT_DAILY_LIMIT = 30
         private const val MILLIS_PER_DAY = 24L * 60 * 60 * 1000
@@ -637,6 +883,7 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
         const val COLUMN_PASSWORD = "password"
         const val COLUMN_AVATAR = "avatar"
         const val COLUMN_DAILY_LIMIT = "daily_limit"
+        const val COLUMN_QUOTA_CREDIT = "quota_credit"
 
         const val TABLE_WORDS = "words"
         const val COLUMN_WORD = "word"
@@ -647,6 +894,10 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
         const val COLUMN_USER_ID = "user_id"
         const val COLUMN_WORD_ID = "word_id"
         const val COLUMN_LEARNED_AT = "learned_at"
+        const val COLUMN_FAIL_COUNT = "fail_count"
+
+        const val TABLE_WORD_DAILY_FAILS = "word_daily_fails"
+        const val COLUMN_FAIL_DATE = "fail_date"
 
         const val TABLE_FRIENDSHIPS = "friendships"
         const val COLUMN_FRIEND_ID = "friend_id"
@@ -675,6 +926,13 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
             COLUMN_CONTENT,
             COLUMN_SENT_AT
         )
+
+        /** 本地日期字符串 'yyyy-MM-dd',用于失败记录按天分组。 */
+        fun dateString(millis: Long): String =
+            SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(millis))
+
+        /** 今日本地日期字符串。 */
+        fun todayDateString(): String = dateString(System.currentTimeMillis())
 
         @Volatile
         private var instance: AppDatabaseHelper? = null

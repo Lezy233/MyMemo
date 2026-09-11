@@ -49,6 +49,7 @@ class StudyFlowTest {
 
     private fun clearStudyData() {
         val database = db.writableDatabase
+        database.delete(AppDatabaseHelper.TABLE_WORD_DAILY_FAILS, null, null)
         database.delete(AppDatabaseHelper.TABLE_STUDY_RECORDS, null, null)
         database.delete(
             AppDatabaseHelper.TABLE_USERS,
@@ -168,6 +169,49 @@ class StudyFlowTest {
             onView(withId(R.id.cardWord)).perform(click())
             onView(withId(R.id.tapHistory)).check(matches(hasChildCount(0)))
         }
+    }
+
+    @Test
+    fun unknownClickPersistsTodayFailCount() {
+        val userId = createUser(dailyLimit = 30)
+        val remaining = singleWordQueue(userId)
+
+        launchStudy().use {
+            onView(withId(R.id.tvCardWord)).check(matches(withText(remaining.word)))
+            onView(withId(R.id.cardWord)).perform(click())
+            onView(withId(R.id.btnUnknown)).perform(click())
+
+            // 点「不认识」即时入库,且尚未学会
+            assertEquals(
+                1,
+                db.getWordFailCount(userId, remaining.id, AppDatabaseHelper.todayDateString())
+            )
+            assertEquals(0, db.getTodayLearnedCount(userId))
+        }
+    }
+
+    @Test
+    fun learningWritesTodayFailCountIntoStudyRecord() {
+        val userId = createUser(dailyLimit = 30)
+        val remaining = singleWordQueue(userId)
+
+        launchStudy().use {
+            // 不认识 1 次 → 连续认识 2 次学会
+            onView(withId(R.id.cardWord)).perform(click())
+            onView(withId(R.id.btnUnknown)).perform(click())
+            onView(withId(R.id.cardWord)).perform(click())
+            onView(withId(R.id.btnKnown)).perform(click())
+            onView(withId(R.id.cardWord)).perform(click())
+            onView(withId(R.id.btnKnown)).perform(click())
+            assertEquals(1, db.getTodayLearnedCount(userId))
+        }
+
+        // 学习记录携带当日失败次数 1 → 统计归「黄」
+        assertEquals(1, db.getWordFailCount(userId, remaining.id, AppDatabaseHelper.todayDateString()))
+        val stats = db.getTodayStats(userId)
+        assertEquals(1, stats.yellow)
+        assertEquals(0, stats.green)
+        assertEquals(0, stats.red)
     }
 
     @Test

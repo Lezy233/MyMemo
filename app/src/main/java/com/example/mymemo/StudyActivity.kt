@@ -145,16 +145,26 @@ class StudyActivity : AppCompatActivity() {
         val queue = session ?: return
         val item = queue.current ?: return
 
+        // 点「不认识」即时持久化当日失败次数(推翻此前纯内存决定,饼图需读库)
+        val failDate = AppDatabaseHelper.todayDateString()
+        val dbFailCount = if (!known) {
+            db.incrementWordFailCount(userId, item.word.id, failDate)
+        } else {
+            db.getWordFailCount(userId, item.word.id, failDate)
+        }
+
         val learned = queue.answer(known)
         Log.d(
             TAG,
             "answer known=$known word=${item.word.word} learned=$learned " +
                 "failedToday=${item.failedToday} streak=${item.streak} " +
-                "taps=${item.tapHistory} today=$todayLearned queue=${queue.snapshot()}"
+                "dbFailCount=$dbFailCount taps=${item.tapHistory} " +
+                "today=$todayLearned queue=${queue.snapshot()}"
         )
 
         if (learned) {
-            db.insertStudyRecord(userId, item.word.id)
+            // 学会时把当日失败次数随学习记录一并写入
+            db.insertStudyRecord(userId, item.word.id, failCount = dbFailCount)
             todayLearned += 1
             refreshProgress()
             if (todayLearned >= dailyLimit) {
