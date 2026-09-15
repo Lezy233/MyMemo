@@ -6,6 +6,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteConstraintException
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import android.util.Log
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -20,6 +21,8 @@ import java.util.Locale
  * - v3:新增 friendships(好友关系)与 messages(聊天消息)两张表
  * - v4:users 增加 quota_credit(额度钱包),study_records 增加 fail_count(学会时当日失败次数),
  *      新增 word_daily_fails(单词每日失败次数)表(stats-and-game)
+ * - v5:新增 weather_queries(天气查询记录)表,存坐标、查询时间与预报 JSON 原文
+ *      (weather-and-location)
  *
  * 后续变更继续在 [onCreate] / [onUpgrade] 中扩展。
  */
@@ -48,6 +51,7 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
         createFriendshipsTable(db)
         createMessagesTable(db)
         createWordDailyFailsTable(db)
+        createWeatherQueriesTable(db)
         seedPresetWordsIfEmpty(db)
     }
 
@@ -83,6 +87,10 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
                 )
             }
             createWordDailyFailsTable(db)
+        }
+        if (oldVersion < 5) {
+            // v5 只新增一张表,既有账号/词库/学习/好友/聊天数据原样保留
+            createWeatherQueriesTable(db)
         }
     }
 
@@ -137,6 +145,25 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
                 $COLUMN_WORD_ID INTEGER NOT NULL,
                 $COLUMN_FAIL_DATE TEXT NOT NULL,
                 $COLUMN_FAIL_COUNT INTEGER NOT NULL DEFAULT 0
+            )
+            """.trimIndent()
+        )
+    }
+
+    /**
+     * 天气查询记录表:每次成功查询写一条。
+     * result 存预报 JSON 原文,与逐字段建表解耦;不绑定 user_id —— 天气是设备级数据,
+     * 与账号无关,切换账号后缓存仍可用。
+     */
+    private fun createWeatherQueriesTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_WEATHER_QUERIES (
+                $COLUMN_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                $COLUMN_LATITUDE REAL NOT NULL,
+                $COLUMN_LONGITUDE REAL NOT NULL,
+                $COLUMN_QUERIED_AT INTEGER NOT NULL,
+                $COLUMN_RESULT TEXT NOT NULL
             )
             """.trimIndent()
         )
@@ -870,9 +897,84 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
         return messages
     }
 
+    // ---------------------------------------------------------------------
+    // 天气查询记录(weather_queries)
+    // ---------------------------------------------------------------------
+
+    /**
+     * 插入一条天气查询记录。
+     *
+     * @param result 天气 API 返回的预报 JSON 原文。
+     * @return 成功写入返回 true;入参为空时返回 false。
+     */
+    fun insertWeatherQuery(
+        latitude: Double,
+        longitude: Double,
+        result: String,
+        queriedAt: Long = System.currentTimeMillis()
+    ): Boolean {
+        if (result.isBlank()) return false
+        val values = ContentValues().apply {
+            put(COLUMN_LATITUDE, latitude)
+            put(COLUMN_LONGITUDE, longitude)
+            put(COLUMN_QUERIED_AT, queriedAt)
+            put(COLUMN_RESULT, result)
+        }
+        val id = writableDatabase.insert(TABLE_WEATHER_QUERIES, null, values)
+        Log.d(TAG, "insertWeatherQuery id=$id lat=$latitude lon=$longitude at=$queriedAt")
+        return id != -1L
+    }
+
+    /** 最近一次天气查询记录;无记录返回 null。 */
+    fun getLatestWeatherQuery(): WeatherQuery? {
+        readableDatabase.query(
+            TABLE_WEATHER_QUERIES,
+            WEATHER_QUERY_COLUMNS,
+            null,
+            null,
+            null,
+            null,
+            "$COLUMN_QUERIED_AT DESC, $COLUMN_ID DESC",
+            "1"
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return readWeatherQuery(cursor)
+        }
+    }
+
+    /** 全部天气查询记录,按查询时间倒序(同毫秒按主键倒序)。 */
+    fun getAllWeatherQueries(): List<WeatherQuery> {
+        val queries = mutableListOf<WeatherQuery>()
+        readableDatabase.query(
+            TABLE_WEATHER_QUERIES,
+            WEATHER_QUERY_COLUMNS,
+            null,
+            null,
+            null,
+            null,
+            "$COLUMN_QUERIED_AT DESC, $COLUMN_ID DESC"
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                queries += readWeatherQuery(cursor)
+            }
+        }
+        Log.d(TAG, "getAllWeatherQueries count=${queries.size}")
+        return queries
+    }
+
+    private fun readWeatherQuery(cursor: Cursor): WeatherQuery = WeatherQuery(
+        id = cursor.getLong(cursor.getColumnIndexOrThrow(COLUMN_ID)),
+        latitude = cursor.getDouble(cursor.getColumnIndexOrThrow(COLUMN_LATITUDE)),
+        longitude = cursor.getDouble(cursor.getColumnIndexOrThrow(COLUMN_LONGITUDE)),
+        queriedAt = cursor.getLong(cursor.getColumnIndexOrThrow(COLUMN_QUERIED_AT)),
+        result = cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_RESULT))
+    )
+
     companion object {
+        private const val TAG = "AppDatabaseHelper"
+
         const val DATABASE_NAME = "mymemo.db"
-        const val DATABASE_VERSION = 4
+        const val DATABASE_VERSION = 5
 
         const val DEFAULT_DAILY_LIMIT = 30
         private const val MILLIS_PER_DAY = 24L * 60 * 60 * 1000
@@ -912,6 +1014,12 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
         const val COLUMN_CONTENT = "content"
         const val COLUMN_SENT_AT = "sent_at"
 
+        const val TABLE_WEATHER_QUERIES = "weather_queries"
+        const val COLUMN_LATITUDE = "latitude"
+        const val COLUMN_LONGITUDE = "longitude"
+        const val COLUMN_QUERIED_AT = "queried_at"
+        const val COLUMN_RESULT = "result"
+
         private val WORD_COLUMNS = arrayOf(
             COLUMN_ID,
             COLUMN_WORD,
@@ -925,6 +1033,14 @@ class AppDatabaseHelper private constructor(context: Context) : SQLiteOpenHelper
             COLUMN_RECEIVER_ID,
             COLUMN_CONTENT,
             COLUMN_SENT_AT
+        )
+
+        private val WEATHER_QUERY_COLUMNS = arrayOf(
+            COLUMN_ID,
+            COLUMN_LATITUDE,
+            COLUMN_LONGITUDE,
+            COLUMN_QUERIED_AT,
+            COLUMN_RESULT
         )
 
         /** 本地日期字符串 'yyyy-MM-dd',用于失败记录按天分组。 */

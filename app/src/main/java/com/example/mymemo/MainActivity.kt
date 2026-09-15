@@ -89,6 +89,12 @@ class MainActivity : AppCompatActivity() {
                     .putExtra(EXTRA_USERNAME, username)
             )
         }
+        findViewById<Button>(R.id.btnWeather).setOnClickListener {
+            startActivity(
+                Intent(this, WeatherActivity::class.java)
+                    .putExtra(EXTRA_USERNAME, username)
+            )
+        }
         findViewById<Button>(R.id.btnExchangeLimit).setOnClickListener { showExchangeDialog() }
         findViewById<Button>(R.id.btnDailyLimit).setOnClickListener { showDailyLimitDialog() }
         findViewById<Button>(R.id.btnLogout).setOnClickListener { logout() }

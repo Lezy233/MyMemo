@@ -147,4 +147,28 @@
     <string name="snake_result_format">本局得分:%1$d\n本局获得额度:%2$d</string>
     <string name="btn_restart">再来一局</string>
     <string name="btn_exit_game">退出</string>
+
+    <!-- 天气与定位 -->
+    <string name="btn_weather">天气查询</string>
+    <string name="title_weather">天气查询</string>
+    <string name="weather_location_format">经度 %1$.4f°,纬度 %2$.4f°</string>
+    <string name="weather_default_location_format">当前使用默认位置(经度 %1$.4f°,纬度 %2$.4f°)</string>
+    <string name="btn_refresh_weather">刷新</string>
+    <string name="weather_loading">正在定位并查询天气…</string>
+    <string name="weather_today_title">今日天气</string>
+    <string name="weather_today_temp_format">最高 %1$.1f°C / 最低 %2$.1f°C</string>
+    <string name="weather_forecast_title">未来 7 天预报</string>
+    <string name="weather_day_temp_format">最高 %1$.1f° / 最低 %2$.1f°</string>
+    <string name="weather_failed">查询失败,请检查网络后重试</string>
+    <string name="weather_cache_notice_format">网络不可用,以下为最近一次查询结果(查询时间:%1$s)</string>
+    <string name="toast_default_location">未获取到当前位置,当前使用默认位置</string>
+
+    <!-- 天气查询历史 -->
+    <string name="btn_weather_history">查询历史</string>
+    <string name="title_weather_history">查询历史</string>
+    <string name="weather_history_empty">暂无查询历史</string>
+    <string name="weather_history_time_format">查询时间:%1$s</string>
+    <string name="weather_history_location_format">坐标:经度 %1$.4f°,纬度 %2$.4f°</string>
+    <string name="weather_history_today_format">今日:%1$s 最高 %2$.1f° / 最低 %3$.1f°</string>
+    <string name="weather_history_parse_failed">该记录无法解析</string>
 </resources>

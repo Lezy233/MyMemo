@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- 联网天气查询需要网络;定位需要前台定位权限(运行时申请) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -63,6 +67,14 @@
 
         <activity
             android:name=".SnakeGameActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".WeatherActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".WeatherHistoryActivity"
             android:exported="false" />
     </application>
 

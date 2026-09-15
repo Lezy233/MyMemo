@@ -8,6 +8,7 @@ import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.Espresso.pressBackUnconditionally
 import androidx.test.espresso.action.ViewActions.click
+import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.action.ViewActions.typeText
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
@@ -114,7 +115,8 @@ class AccountFlowTest {
             assertTrue("登录成功后应处于主界面", mainActivity is MainActivity)
 
             // 8) 退出登录 → 回到登录界面,且无法通过返回键回到主界面
-            onView(withId(R.id.btnLogout)).perform(click())
+            // 主界面入口较多,底部按钮需先滚动到可见区域
+            onView(withId(R.id.btnLogout)).perform(scrollTo(), click())
             onView(withId(R.id.login_title)).check(matches(isDisplayed()))
             assertTrue("退出后应回到登录界面", currentResumedActivity() is LoginActivity)
 
